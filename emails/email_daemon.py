@@ -23,13 +23,15 @@ class EmailDaemon:
 
     def check_emails(self):
         try:
+            current_time = datetime.now()
             logger.info(f"Checking for new emails since {self.last_check}...")
+
             with imaplib.IMAP4_SSL(self.imap_server) as imap:
                 imap.login(self.email, self.password)
                 imap.select('INBOX')
 
-                # Search for unseen emails
-                _, message_numbers = imap.search(None, 'UNSEEN')
+                # Search for all emails, not just unseen
+                _, message_numbers = imap.search(None, 'ALL')
 
                 for num in message_numbers[0].split():
                     _, msg_data = imap.fetch(num, '(RFC822)')
@@ -39,39 +41,42 @@ class EmailDaemon:
                     # Get email date
                     date_str = email_message['Date']
                     if date_str:
-                        email_date = datetime.fromtimestamp(
-                            email.utils.mktime_tz(email.utils.parsedate_tz(date_str))
-                        )
+                        try:
+                            email_date = datetime.fromtimestamp(
+                                email.utils.mktime_tz(email.utils.parsedate_tz(date_str))
+                            )
 
-                        # Only process emails newer than last check
-                        if email_date > self.last_check:
-                            to_address = email_message['To']
-                            logger.info(f"Processing new email sent to: {to_address}")
+                            # Only process emails newer than last check
+                            if email_date > self.last_check:
+                                to_address = email_message['To']
+                                logger.info(f"Processing new email sent to: {to_address}")
 
-                            # Check if email was sent to any @cyphy.life address
-                            if '@cyphy.life' in to_address:
-                                # Find corresponding mailing list
-                                mailing_list = MailingList.objects.filter(alias=to_address).first()
+                                # Check if email was sent to any @cyphy.life address
+                                if '@cyphy.life' in to_address:
+                                    # Find corresponding mailing list
+                                    mailing_list = MailingList.objects.filter(alias=to_address).first()
 
-                                if mailing_list:
-                                    logger.info(f"Found mailing list for: {to_address}")
-                                    subscribers = mailing_list.subscribers.filter(is_active=True)
-                                    if subscribers:
-                                        self.forward_email(email_message, subscribers)
-                                        logger.info(f"Email forwarded to {len(subscribers)} subscribers")
+                                    if mailing_list:
+                                        logger.info(f"Found mailing list for: {to_address}")
+                                        subscribers = mailing_list.subscribers.filter(is_active=True)
+                                        if subscribers:
+                                            self.forward_email(email_message, subscribers)
+                                            logger.info(f"Email forwarded to {len(subscribers)} subscribers")
+                                        else:
+                                            logger.warning(f"No active subscribers found for {to_address}")
                                     else:
-                                        logger.warning(f"No active subscribers found for {to_address}")
+                                        logger.info(f"No mailing list found for: {to_address}")
                                 else:
-                                    logger.info(f"No mailing list found for: {to_address}")
+                                    logger.info(f"Skipping email not sent to @cyphy.life")
                             else:
-                                logger.info(f"Skipping email not sent to @cyphy.life")
+                                logger.debug(f"Skipping old email from {email_date}")
+                        except Exception as e:
+                            logger.error(f"Error processing email date: {str(e)}")
+                            continue
 
-                    # Mark as seen
-                    imap.store(num, '+FLAGS', '\\Seen')
-
-            # Update last check time
-            self.last_check = datetime.now()
-            logger.info("Email check completed")
+            # Update last check time only after successful processing
+            self.last_check = current_time
+            logger.info(f"Email check completed. Next check will process emails after {self.last_check}")
 
         except Exception as e:
             logger.error(f"Error checking emails: {str(e)}")
