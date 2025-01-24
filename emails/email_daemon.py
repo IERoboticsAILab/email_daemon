@@ -21,6 +21,25 @@ class EmailDaemon:
         self.last_check = datetime.now() - timedelta(minutes=1)
         logger.info(f"Email daemon initialized with email: {self.email}")
 
+    def extract_email_addresses(self, email_message):
+        """Extract all possible recipient addresses from various headers"""
+        addresses = set()
+
+        # Headers that might contain our target address
+        recipient_headers = ['To', 'Delivered-To', 'X-Original-To', 'Envelope-To']
+
+        for header in recipient_headers:
+            header_value = email_message.get(header)
+            if header_value:
+                # Handle multiple addresses in one header
+                for addr_part in header_value.split(','):
+                    clean_addr = self.extract_email_address(addr_part)
+                    if clean_addr:
+                        addresses.add(clean_addr)
+
+        logger.debug(f"Extracted addresses: {addresses}")
+        return addresses
+
     def check_emails(self):
         try:
             current_time = datetime.now()
@@ -30,7 +49,7 @@ class EmailDaemon:
                 imap.login(self.email, self.password)
                 imap.select('INBOX')
 
-                # Search for all emails, not just unseen
+                # Search for all emails
                 _, message_numbers = imap.search(None, 'ALL')
 
                 for num in message_numbers[0].split():
@@ -48,30 +67,31 @@ class EmailDaemon:
 
                             # Only process emails newer than last check
                             if email_date > self.last_check:
-                                to_address = email_message['To']
-                                logger.info(f"Processing new email sent to: {to_address}")
+                                # Get all possible recipient addresses
+                                recipient_addresses = self.extract_email_addresses(email_message)
+                                logger.info(f"Found recipient addresses: {recipient_addresses}")
 
-                                # Check if email was sent to any @cyphy.life address
-                                if '@cyphy.life' in to_address:
-                                    # Find corresponding mailing list
-                                    mailing_list = MailingList.objects.filter(alias=to_address).first()
+                                # Check each address for @cyphy.life
+                                for address in recipient_addresses:
+                                    if '@cyphy.life' in address:
+                                        # Find corresponding mailing list
+                                        mailing_list = MailingList.objects.filter(alias=address).first()
 
-                                    if mailing_list:
-                                        logger.info(f"Found mailing list for: {to_address}")
-                                        subscribers = mailing_list.subscribers.filter(is_active=True)
-                                        if subscribers:
-                                            self.forward_email(email_message, subscribers, mailing_list)
-                                            logger.info(f"Email forwarded to {len(subscribers)} subscribers")
+                                        if mailing_list:
+                                            logger.info(f"Found mailing list for: {address}")
+                                            subscribers = mailing_list.subscribers.filter(is_active=True)
+                                            if subscribers:
+                                                self.forward_email(email_message, subscribers, mailing_list)
+                                                logger.info(f"Email forwarded to {len(subscribers)} subscribers")
+                                            else:
+                                                logger.warning(f"No active subscribers found for {address}")
                                         else:
-                                            logger.warning(f"No active subscribers found for {to_address}")
-                                    else:
-                                        logger.info(f"No mailing list found for: {to_address}")
-                                else:
-                                    logger.info(f"Skipping email not sent to @cyphy.life")
+                                            logger.info(f"No mailing list found for: {address}")
                             else:
                                 logger.debug(f"Skipping old email from {email_date}")
                         except Exception as e:
                             logger.error(f"Error processing email date: {str(e)}")
+                            logger.error("Error details:", exc_info=True)
                             continue
 
             # Update last check time only after successful processing
@@ -80,6 +100,22 @@ class EmailDaemon:
 
         except Exception as e:
             logger.error(f"Error checking emails: {str(e)}")
+            logger.error("Error details:", exc_info=True)
+
+    def extract_email_address(self, address_string):
+        """Extract email address from various formats like 'Name <email>' or '"email" <email>'"""
+        if not address_string:
+            return None
+
+        addr = address_string.strip()
+        # Check for <email> format
+        if '<' in addr and '>' in addr:
+            # Extract email between < and >
+            start = addr.find('<') + 1
+            end = addr.find('>')
+            return addr[start:end].strip()
+        # Otherwise return as is
+        return addr.strip().strip('"')
 
     def forward_email(self, original_email, subscribers, mailing_list):
         try:
@@ -105,59 +141,83 @@ class EmailDaemon:
                     body = MIMEMultipart('alternative')
 
                     # Variables to store the text and html parts
-                    text_part = None
-                    html_part = None
+                    text_parts = []
+                    html_parts = []
 
+                    def process_part(part):
+                        try:
+                            content_type = part.get_content_type()
+                            if content_type == 'text/plain':
+                                text_parts.append(part.get_payload(decode=True).decode())
+                            elif content_type == 'text/html':
+                                html_parts.append(part.get_payload(decode=True).decode())
+                            elif part.get_filename():
+                                # Handle attachments by copying the entire part
+                                msg.attach(part)
+                        except Exception as e:
+                            logger.error(f"Error processing email part: {str(e)}")
+                            logger.error("Error details:", exc_info=True)
+
+                    # Process the entire email structure
                     if original_email.is_multipart():
                         for part in original_email.walk():
-                            # Skip multipart containers
                             if part.get_content_maintype() == 'multipart':
                                 continue
-
-                            # Get the content type
-                            content_type = part.get_content_type()
-
-                            # Handle different content types
-                            if content_type == 'text/plain' and not text_part:
-                                text_part = part
-                            elif content_type == 'text/html' and not html_part:
-                                html_part = part
-                            # Handle attachments
-                            elif part.get_filename():
-                                msg.attach(part)
-
+                            process_part(part)
                     else:
-                        # Handle non-multipart messages
-                        content_type = original_email.get_content_type()
-                        if content_type == 'text/plain':
-                            text_part = original_email
-                        elif content_type == 'text/html':
-                            html_part = original_email
+                        process_part(original_email)
 
-                    # Attach the text and html parts in order (text first, then html)
-                    if text_part:
-                        body.attach(MIMEText(text_part.get_payload(decode=True).decode(), 'plain'))
-                    if html_part:
-                        body.attach(MIMEText(html_part.get_payload(decode=True).decode(), 'html'))
+                    # Combine all text parts
+                    if text_parts:
+                        combined_text = '\n\n'.join(text_parts)
+                        body.attach(MIMEText(combined_text, 'plain', 'utf-8'))
 
-                    # If no text or html parts were found, use the original payload
-                    if not text_part and not html_part:
-                        body.attach(MIMEText(original_email.get_payload(decode=True).decode(), 'plain'))
+                    # Combine all HTML parts
+                    if html_parts:
+                        combined_html = '<br><br>'.join(html_parts)
+                        body.attach(MIMEText(combined_html, 'html', 'utf-8'))
+
+                    # If no content was found, use original payload
+                    if not text_parts and not html_parts:
+                        try:
+                            payload = original_email.get_payload(decode=True)
+                            if payload:
+                                body.attach(MIMEText(payload.decode(), 'plain', 'utf-8'))
+                        except Exception as e:
+                            logger.error(f"Error handling fallback payload: {str(e)}")
+                            logger.error("Error details:", exc_info=True)
 
                     # Attach the body to the message
                     msg.attach(body)
 
-                    # Copy original headers that might be important
-                    for header in ['Date', 'Message-ID', 'References', 'In-Reply-To']:
+                    # Handle References and In-Reply-To headers properly
+                    references = []
+                    if 'References' in original_email:
+                        references.extend(original_email['References'].split())
+                    if 'Message-ID' in original_email:
+                        references.append(original_email['Message-ID'])
+
+                    if references:
+                        msg['References'] = ' '.join(references)
+
+                    if 'In-Reply-To' in original_email:
+                        msg['In-Reply-To'] = original_email['In-Reply-To']
+
+                    # Copy other important headers
+                    for header in ['Date', 'Message-ID', 'Content-Type', 'Content-Transfer-Encoding']:
                         if header in original_email:
                             msg[header] = original_email[header]
 
-                    server.send_message(msg)
-                    logger.info(f"Successfully forwarded to {subscriber.email}")
+                    try:
+                        server.send_message(msg)
+                        logger.info(f"Successfully forwarded to {subscriber.email}")
+                    except Exception as e:
+                        logger.error(f"Error sending email to {subscriber.email}: {str(e)}")
+                        logger.error("Error details:", exc_info=True)
 
         except Exception as e:
             logger.error(f"Error forwarding email: {str(e)}")
-            logger.error(f"Error details: ", exc_info=True)
+            logger.error("Error details:", exc_info=True)
 
     def run(self):
         logger.info("Starting email daemon...")
