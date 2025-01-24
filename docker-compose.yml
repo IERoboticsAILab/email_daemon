@@ -6,7 +6,7 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8089:8089"
+      - "8025:8025"
     env_file:
       - .env
     depends_on:
