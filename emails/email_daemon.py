@@ -60,7 +60,7 @@ class EmailDaemon:
                                         logger.info(f"Found mailing list for: {to_address}")
                                         subscribers = mailing_list.subscribers.filter(is_active=True)
                                         if subscribers:
-                                            self.forward_email(email_message, subscribers)
+                                            self.forward_email(email_message, subscribers, mailing_list)
                                             logger.info(f"Email forwarded to {len(subscribers)} subscribers")
                                         else:
                                             logger.warning(f"No active subscribers found for {to_address}")
@@ -81,19 +81,24 @@ class EmailDaemon:
         except Exception as e:
             logger.error(f"Error checking emails: {str(e)}")
 
-    def forward_email(self, original_email, subscribers):
+    def forward_email(self, original_email, subscribers, mailing_list):
         try:
             logger.info("Starting email forwarding process")
             with smtplib.SMTP(self.smtp_server) as server:
                 server.starttls()
                 server.login(self.email, self.password)
 
+                # Get original subject and add mailing list
+                original_subject = original_email['Subject'] or ''
+                list_name = mailing_list.alias.split('@')[0]  # Get 'msgs' from 'msgs@cyphy.life'
+                new_subject = f"[{list_name.upper()}] {original_subject}"
+
                 for subscriber in subscribers:
                     logger.info(f"Forwarding to: {subscriber.email}")
                     msg = MIMEMultipart()
                     msg['From'] = self.email
                     msg['To'] = subscriber.email
-                    msg['Subject'] = original_email['Subject']
+                    msg['Subject'] = new_subject
                     msg['Reply-To'] = original_email['From']
 
                     # Get email body
