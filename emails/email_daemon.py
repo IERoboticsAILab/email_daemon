@@ -90,30 +90,74 @@ class EmailDaemon:
 
                 # Get original subject and add mailing list
                 original_subject = original_email['Subject'] or ''
-                list_name = mailing_list.alias.split('@')[0]  # Get 'msgs' from 'msgs@cyphy.life'
+                list_name = mailing_list.alias.split('@')[0]
                 new_subject = f"[{list_name.upper()}] {original_subject}"
 
                 for subscriber in subscribers:
                     logger.info(f"Forwarding to: {subscriber.email}")
-                    msg = MIMEMultipart()
+                    msg = MIMEMultipart('mixed')
                     msg['From'] = self.email
                     msg['To'] = subscriber.email
                     msg['Subject'] = new_subject
                     msg['Reply-To'] = original_email['From']
 
-                    # Get email body
+                    # Create the body of the message
+                    body = MIMEMultipart('alternative')
+
+                    # Variables to store the text and html parts
+                    text_part = None
+                    html_part = None
+
                     if original_email.is_multipart():
                         for part in original_email.walk():
-                            if part.get_content_type() == "text/plain":
-                                msg.attach(MIMEText(part.get_payload()))
+                            # Skip multipart containers
+                            if part.get_content_maintype() == 'multipart':
+                                continue
+
+                            # Get the content type
+                            content_type = part.get_content_type()
+
+                            # Handle different content types
+                            if content_type == 'text/plain' and not text_part:
+                                text_part = part
+                            elif content_type == 'text/html' and not html_part:
+                                html_part = part
+                            # Handle attachments
+                            elif part.get_filename():
+                                msg.attach(part)
+
                     else:
-                        msg.attach(MIMEText(original_email.get_payload()))
+                        # Handle non-multipart messages
+                        content_type = original_email.get_content_type()
+                        if content_type == 'text/plain':
+                            text_part = original_email
+                        elif content_type == 'text/html':
+                            html_part = original_email
+
+                    # Attach the text and html parts in order (text first, then html)
+                    if text_part:
+                        body.attach(MIMEText(text_part.get_payload(decode=True).decode(), 'plain'))
+                    if html_part:
+                        body.attach(MIMEText(html_part.get_payload(decode=True).decode(), 'html'))
+
+                    # If no text or html parts were found, use the original payload
+                    if not text_part and not html_part:
+                        body.attach(MIMEText(original_email.get_payload(decode=True).decode(), 'plain'))
+
+                    # Attach the body to the message
+                    msg.attach(body)
+
+                    # Copy original headers that might be important
+                    for header in ['Date', 'Message-ID', 'References', 'In-Reply-To']:
+                        if header in original_email:
+                            msg[header] = original_email[header]
 
                     server.send_message(msg)
                     logger.info(f"Successfully forwarded to {subscriber.email}")
 
         except Exception as e:
             logger.error(f"Error forwarding email: {str(e)}")
+            logger.error(f"Error details: ", exc_info=True)
 
     def run(self):
         logger.info("Starting email daemon...")
