@@ -1,7 +1,7 @@
 from django.db import models
 
 class MailingList(models.Model):
-    alias = models.CharField(max_length=100, unique=True)  # e.g., "robotics-team@yourdomain.com"
+    alias = models.CharField(max_length=100, unique=True)  # e.g., "msgs@cyphy.life"
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -9,13 +9,15 @@ class MailingList(models.Model):
         return self.alias
 
 class Subscriber(models.Model):
-    mailing_list = models.ForeignKey(MailingList, on_delete=models.CASCADE, related_name='subscribers')
     email = models.EmailField()
+    mailing_lists = models.ManyToManyField(MailingList, related_name='subscribers')  # Changed from ForeignKey to ManyToManyField
     is_active = models.BooleanField(default=True)
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ['mailing_list', 'email']
+        # Remove unique_together since subscribers can be in multiple lists
+        unique_together = []
 
     def __str__(self):
-        return f"{self.email} -> {self.mailing_list.alias}"
+        lists = ", ".join([ml.alias for ml in self.mailing_lists.all()])
+        return f"{self.email} -> [{lists}]"

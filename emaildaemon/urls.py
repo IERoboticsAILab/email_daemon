@@ -17,7 +17,8 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 from emails import views
+
 urlpatterns = [
     path('admin/', admin.site.urls),
-     path('webhook/incoming-email/', views.handle_incoming_email, name='handle_incoming_email'),
+    path('test-email/', views.test_email, name='test_email'),
 ]

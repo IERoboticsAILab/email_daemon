@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    volumes:
+      - .:/app
+    ports:
+      - "8089:8089"
+    env_file:
+      - .env
+    depends_on:
+      - db
+
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=emaildaemon
+      - POSTGRES_USER=emaildaemon
+      - POSTGRES_PASSWORD=emaildaemon
+
+volumes:
+  postgres_data:

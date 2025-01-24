@@ -11,6 +11,11 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,7 +30,7 @@ SECRET_KEY = 'django-insecure-1!-yq+)vh&xpa(*hgg*mqsen%(qz4nnf_8@6(afsykkjb3trlq
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -37,6 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'emails',
 ]
 
 MIDDLEWARE = [
@@ -121,3 +127,10 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Email daemon settings
+IMAP_SERVER = 'imap.gmail.com'
+SMTP_SERVER = 'smtp.gmail.com'
+SMTP_PORT = 587
+EMAIL_ADDRESS = os.getenv('EMAIL_ADDRESS')
+EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
