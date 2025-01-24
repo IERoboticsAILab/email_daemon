@@ -8,9 +8,8 @@ ENV PYTHONUNBUFFERED 1
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies
+# Install supervisor
 RUN apt-get update && apt-get install -y \
-    netcat-traditional \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
 
