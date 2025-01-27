@@ -139,7 +139,7 @@ EMAIL_ADDRESS = os.getenv('EMAIL_ADDRESS')
 EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
 
 # Add to your existing settings
-SITE_URL = 'http://127.0.0.1:8000'
+SITE_URL = 'http://10.205.10.2:8025'
 
 # Email Settings for the email confirmations
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
