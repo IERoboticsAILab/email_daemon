@@ -1,4 +1,4 @@
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 import json
@@ -9,7 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from django.conf import settings
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .forms import SubscriptionForm
+from .forms import SubscriptionForm, UnsubscribeForm
 
 @csrf_exempt
 def test_webhook(request):
@@ -45,41 +45,53 @@ def test_email(request):
 
 def mailing_lists(request):
     if request.method == 'POST':
-        form = SubscriptionForm(request.POST)
-        if form.is_valid():
-            email = form.cleaned_data['email']
-            selected_lists = form.cleaned_data['mailing_lists']
+        action = request.POST.get('action')
 
-            # Get or create subscriber
-            subscriber, created = Subscriber.objects.get_or_create(
-                email=email,
-                defaults={'is_active': True}
-            )
+        if action == 'subscribe':
+            form = SubscriptionForm(request.POST)
+            if form.is_valid():
+                email = form.cleaned_data['email']
+                selected_lists = form.cleaned_data['mailing_lists']
 
-            # Update subscriptions
-            subscriber.mailing_lists.set(selected_lists)
-            subscriber.is_active = True
-            subscriber.save()
+                subscriber, created = Subscriber.objects.get_or_create(
+                    email=email,
+                    defaults={'is_active': True}
+                )
 
-            messages.success(request, 'Your subscriptions have been updated!')
+                subscriber.mailing_lists.add(*selected_lists)
+                subscriber.is_active = True
+                subscriber.save()
+
+                messages.success(request, 'Successfully subscribed to the selected mailing lists!')
+                return redirect('mailing_lists')
+
+        elif action == 'check':
+            email = request.POST.get('email')
+            subscriber = Subscriber.objects.filter(email=email).first()
+            if subscriber:
+                user_subscriptions = subscriber.mailing_lists.all()
+                return render(request, 'emails/mailing_lists.html', {
+                    'form': SubscriptionForm(),
+                    'unsubscribe_form': UnsubscribeForm(initial={'email': email}),
+                    'mailing_lists': MailingList.objects.all(),
+                    'user_subscriptions': user_subscriptions,
+                    'checked_email': email
+                })
+            else:
+                messages.info(request, 'No subscriptions found for this email address.')
+
+        elif action == 'unsubscribe':
+            email = request.POST.get('email')
+            lists_to_unsubscribe = request.POST.getlist('unsubscribe_from')
+
+            subscriber = Subscriber.objects.filter(email=email).first()
+            if subscriber and lists_to_unsubscribe:
+                subscriber.mailing_lists.remove(*lists_to_unsubscribe)
+                messages.success(request, 'Successfully unsubscribed from the selected lists.')
             return redirect('mailing_lists')
-    else:
-        form = SubscriptionForm()
-
-    # Get all mailing lists with their subscribers
-    mailing_lists = MailingList.objects.prefetch_related('subscribers')
-
-    # If email is provided, get their current subscriptions
-    email = request.GET.get('email')
-    current_subscriptions = []
-    if email:
-        subscriber = Subscriber.objects.filter(email=email).first()
-        if subscriber:
-            current_subscriptions = list(subscriber.mailing_lists.values_list('id', flat=True))
-            form = SubscriptionForm(initial={'email': email, 'mailing_lists': current_subscriptions})
 
     return render(request, 'emails/mailing_lists.html', {
-        'form': form,
-        'mailing_lists': mailing_lists,
-        'current_subscriptions': current_subscriptions
+        'form': SubscriptionForm(),
+        'unsubscribe_form': UnsubscribeForm(),
+        'mailing_lists': MailingList.objects.all(),
     })
