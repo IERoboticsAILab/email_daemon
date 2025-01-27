@@ -66,9 +66,10 @@
         <div class="col-md-6 mb-4">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="card-title mb-0">Check Your Subscriptions</h5>
+                    <h5 class="card-title mb-0">Manage Your Subscriptions</h5>
                 </div>
                 <div class="card-body">
+                    {% if not user_subscriptions %}
                     <form method="post">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="check">
@@ -78,29 +79,29 @@
                         </div>
                         <button type="submit" class="btn btn-secondary">Check Subscriptions</button>
                     </form>
+                    {% else %}
+                    <h6>Current Subscriptions for {{ checked_email }}:</h6>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="unsubscribe">
+                        <input type="hidden" name="email" value="{{ checked_email }}">
 
-                    {% if user_subscriptions %}
-                    <div class="mt-4">
-                        <h6>Your Current Subscriptions:</h6>
-                        <form method="post">
-                            {% csrf_token %}
-                            <input type="hidden" name="action" value="unsubscribe">
-                            <input type="hidden" name="email" value="{{ checked_email }}">
-                            {% for list in user_subscriptions %}
-                            <div class="form-check">
-                                <input type="checkbox"
-                                       name="unsubscribe_from"
-                                       value="{{ list.id }}"
-                                       class="form-check-input"
-                                       id="unsub_{{ list.id }}">
-                                <label class="form-check-label" for="unsub_{{ list.id }}">
-                                    {{ list.alias }}
-                                </label>
-                            </div>
-                            {% endfor %}
-                            <button type="submit" class="btn btn-danger mt-3">Unsubscribe from Selected</button>
-                        </form>
-                    </div>
+                        {% for list in user_subscriptions %}
+                        <div class="form-check mb-2">
+                            <input type="checkbox"
+                                   name="unsubscribe_from"
+                                   value="{{ list.id }}"
+                                   class="form-check-input"
+                                   id="unsub_{{ list.id }}">
+                            <label class="form-check-label" for="unsub_{{ list.id }}">
+                                {{ list.alias }}
+                            </label>
+                        </div>
+                        {% endfor %}
+
+                        <button type="submit" class="btn btn-danger mt-3">Send Unsubscribe Confirmation</button>
+                        <a href="{% url 'mailing_lists' %}" class="btn btn-secondary mt-3">Check Different Email</a>
+                    </form>
                     {% endif %}
                 </div>
             </div>

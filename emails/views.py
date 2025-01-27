@@ -1,6 +1,6 @@
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
 import json
 from .models import MailingList, Subscriber
 import smtplib
@@ -10,6 +10,7 @@ from django.conf import settings
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from .forms import SubscriptionForm, UnsubscribeForm
+from .utils import send_subscription_confirmation, send_unsubscribe_email, verify_unsubscribe_token
 
 @csrf_exempt
 def test_webhook(request):
@@ -62,7 +63,10 @@ def mailing_lists(request):
                 subscriber.is_active = True
                 subscriber.save()
 
-                messages.success(request, 'Successfully subscribed to the selected mailing lists!')
+                # Send confirmation email
+                send_subscription_confirmation(email, selected_lists)
+
+                messages.success(request, 'Successfully subscribed! Please check your email for confirmation.')
                 return redirect('mailing_lists')
 
         elif action == 'check':
@@ -84,10 +88,19 @@ def mailing_lists(request):
             email = request.POST.get('email')
             lists_to_unsubscribe = request.POST.getlist('unsubscribe_from')
 
-            subscriber = Subscriber.objects.filter(email=email).first()
-            if subscriber and lists_to_unsubscribe:
-                subscriber.mailing_lists.remove(*lists_to_unsubscribe)
-                messages.success(request, 'Successfully unsubscribed from the selected lists.')
+            if not lists_to_unsubscribe:
+                messages.error(request, 'Please select at least one list to unsubscribe from.')
+                return redirect('mailing_lists')
+
+            # Send unsubscribe confirmation email for each selected list
+            for list_id in lists_to_unsubscribe:
+                try:
+                    mailing_list = MailingList.objects.get(id=list_id)
+                    send_unsubscribe_email(email, mailing_list)
+                except MailingList.DoesNotExist:
+                    continue
+
+            messages.success(request, 'Unsubscribe confirmation emails have been sent. Please check your inbox.')
             return redirect('mailing_lists')
 
     return render(request, 'emails/mailing_lists.html', {
@@ -95,3 +108,21 @@ def mailing_lists(request):
         'unsubscribe_form': UnsubscribeForm(),
         'mailing_lists': MailingList.objects.all(),
     })
+
+@require_GET
+def unsubscribe_confirm(request):
+    token = request.GET.get('token')
+    email, list_id = verify_unsubscribe_token(token)
+
+    if email and list_id:
+        try:
+            subscriber = Subscriber.objects.get(email=email)
+            mailing_list = MailingList.objects.get(id=list_id)
+            subscriber.mailing_lists.remove(mailing_list)
+            messages.success(request, f'Successfully unsubscribed from {mailing_list.alias}')
+        except (Subscriber.DoesNotExist, MailingList.DoesNotExist):
+            messages.error(request, 'Invalid unsubscribe request.')
+    else:
+        messages.error(request, 'Invalid or expired unsubscribe link.')
+
+    return redirect('mailing_lists')

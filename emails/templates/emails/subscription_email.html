@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h2>Subscription Confirmation</h2>
+    <p>Hello,</p>
+    <p>You have been successfully subscribed to the following Cyphy.life mailing lists:</p>
+    <ul>
+        {% for list in mailing_lists %}
+        <li>{{ list.alias }}{% if list.description %} - {{ list.description }}{% endif %}</li>
+        {% endfor %}
+    </ul>
+    <p>Thank you for subscribing!</p>
+</body>
+</html>

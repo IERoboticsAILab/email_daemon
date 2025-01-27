@@ -23,4 +23,5 @@ urlpatterns = [
 
     path('test-email/', views.test_email, name='test_email'),
     path('', views.mailing_lists, name='mailing_lists'),
+    path('unsubscribe/confirm/', views.unsubscribe_confirm, name='unsubscribe_confirm'),
 ]
