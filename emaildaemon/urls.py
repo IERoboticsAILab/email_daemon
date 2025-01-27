@@ -20,5 +20,7 @@ from emails import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
     path('test-email/', views.test_email, name='test_email'),
+    path('', views.mailing_lists, name='mailing_lists'),
 ]
