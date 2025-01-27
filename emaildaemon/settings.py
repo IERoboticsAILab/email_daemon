@@ -152,3 +152,15 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD')  # Your Gmail app password
 # Make sure these are also set
 DEFAULT_FROM_EMAIL = os.getenv('EMAIL_ADDRESS')
 SERVER_EMAIL = os.getenv('EMAIL_ADDRESS')
+
+# CSRF Settings
+CSRF_TRUSTED_ORIGINS = [
+    'http://10.205.10.2:8025',
+    'https://10.205.10.2:8025',
+]
+
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = False
+
+CSRF_COOKIE_DOMAIN = '10.205.10.2'
+CSRF_COOKIE_SAMESITE = 'Lax'
