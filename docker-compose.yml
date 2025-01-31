@@ -6,6 +6,6 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8025:8025"
+      - "8081:8081"
     env_file:
       - .env
