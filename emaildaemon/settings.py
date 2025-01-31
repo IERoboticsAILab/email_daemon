@@ -155,8 +155,16 @@ SERVER_EMAIL = os.getenv('EMAIL_ADDRESS')
 
 # CSRF Settings
 CSRF_TRUSTED_ORIGINS = [
-    'http://10.205.10.2:8025',
-    'https://10.205.10.2:8025',
+    'http://10.205.10.2:8081',
+    'https://10.205.10.2:8081',
+    'http://colossus:8081',
+    'https://colossus:8081',
+    'http://cyphy.life:8081',
+    'https://cyphy.life:8081',
+    'http://cyphy.life',
+    'https://cyphy.life',
+    'http://cyphy.life/mail_list'
+    'https://cyphy.life/mail_list'
 ]
 
 CSRF_COOKIE_SECURE = False
