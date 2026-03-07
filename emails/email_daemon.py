@@ -4,6 +4,7 @@ from email import message_from_bytes
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from django.conf import settings
+import django.db
 import time
 import logging
 from datetime import datetime, timedelta
@@ -49,8 +50,9 @@ class EmailDaemon:
                 imap.login(self.email, self.password)
                 imap.select('INBOX')
 
-                # Search for all emails
-                _, message_numbers = imap.search(None, 'ALL')
+                # Server-side SINCE filter to only download recent emails
+                date_str = self.last_check.strftime('%d-%b-%Y')
+                _, message_numbers = imap.search(None, f'(SINCE "{date_str}")')
 
                 for num in message_numbers[0].split():
                     _, msg_data = imap.fetch(num, '(RFC822)')
@@ -58,11 +60,11 @@ class EmailDaemon:
                     email_message = message_from_bytes(email_body)
 
                     # Get email date
-                    date_str = email_message['Date']
-                    if date_str:
+                    date_header = email_message['Date']
+                    if date_header:
                         try:
                             email_date = datetime.fromtimestamp(
-                                email.utils.mktime_tz(email.utils.parsedate_tz(date_str))
+                                email.utils.mktime_tz(email.utils.parsedate_tz(date_header))
                             )
 
                             # Only process emails newer than last check
@@ -94,6 +96,10 @@ class EmailDaemon:
                             logger.error("Error details:", exc_info=True)
                             continue
 
+                    # Free memory after processing each email
+                    del email_message
+                    del msg_data
+
             # Update last check time only after successful processing
             self.last_check = current_time
             logger.info(f"Email check completed. Next check will process emails after {self.last_check}")
@@ -101,6 +107,8 @@ class EmailDaemon:
         except Exception as e:
             logger.error(f"Error checking emails: {str(e)}")
             logger.error("Error details:", exc_info=True)
+        finally:
+            django.db.connections.close_all()
 
     def extract_email_address(self, address_string):
         """Extract email address from various formats like 'Name <email>' or '"email" <email>'"""
@@ -117,17 +125,71 @@ class EmailDaemon:
         # Otherwise return as is
         return addr.strip().strip('"')
 
+    def _extract_parts(self, original_email):
+        """Extract text, html, and attachment parts from an email once."""
+        text_parts = []
+        html_parts = []
+        attachments = []
+
+        def process_part(part):
+            try:
+                content_type = part.get_content_type()
+                if content_type == 'text/plain':
+                    text_parts.append(part.get_payload(decode=True).decode())
+                elif content_type == 'text/html':
+                    html_parts.append(part.get_payload(decode=True).decode())
+                elif part.get_filename():
+                    attachments.append(part)
+            except Exception as e:
+                logger.error(f"Error processing email part: {str(e)}")
+                logger.error("Error details:", exc_info=True)
+
+        if original_email.is_multipart():
+            for part in original_email.walk():
+                if part.get_content_maintype() == 'multipart':
+                    continue
+                process_part(part)
+        else:
+            process_part(original_email)
+
+        return text_parts, html_parts, attachments
+
     def forward_email(self, original_email, subscribers, mailing_list):
         try:
             logger.info("Starting email forwarding process")
+
+            # Parse body ONCE, reuse for all subscribers
+            text_parts, html_parts, attachments = self._extract_parts(original_email)
+
+            # Build combined text/html content once
+            combined_text = '\n\n'.join(text_parts) if text_parts else None
+            combined_html = '<br><br>'.join(html_parts) if html_parts else None
+
+            # Fallback payload if no text or html found
+            fallback_text = None
+            if not text_parts and not html_parts:
+                try:
+                    payload = original_email.get_payload(decode=True)
+                    if payload:
+                        fallback_text = payload.decode()
+                except Exception as e:
+                    logger.error(f"Error handling fallback payload: {str(e)}")
+                    logger.error("Error details:", exc_info=True)
+
+            # Pre-compute shared header values
+            original_subject = original_email['Subject'] or ''
+            list_name = mailing_list.alias.split('@')[0]
+            new_subject = f"[{list_name.upper()}] {original_subject}"
+
+            references = []
+            if 'References' in original_email:
+                references.extend(original_email['References'].split())
+            if 'Message-ID' in original_email:
+                references.append(original_email['Message-ID'])
+
             with smtplib.SMTP(self.smtp_server) as server:
                 server.starttls()
                 server.login(self.email, self.password)
-
-                # Get original subject and add mailing list
-                original_subject = original_email['Subject'] or ''
-                list_name = mailing_list.alias.split('@')[0]
-                new_subject = f"[{list_name.upper()}] {original_subject}"
 
                 for subscriber in subscribers:
                     logger.info(f"Forwarding to: {subscriber.email}")
@@ -137,66 +199,23 @@ class EmailDaemon:
                     msg['Subject'] = new_subject
                     msg['Reply-To'] = original_email['From']
 
-                    # Create the body of the message
+                    # Build the body
                     body = MIMEMultipart('alternative')
 
-                    # Variables to store the text and html parts
-                    text_parts = []
-                    html_parts = []
-
-                    def process_part(part):
-                        try:
-                            content_type = part.get_content_type()
-                            if content_type == 'text/plain':
-                                text_parts.append(part.get_payload(decode=True).decode())
-                            elif content_type == 'text/html':
-                                html_parts.append(part.get_payload(decode=True).decode())
-                            elif part.get_filename():
-                                # Handle attachments by copying the entire part
-                                msg.attach(part)
-                        except Exception as e:
-                            logger.error(f"Error processing email part: {str(e)}")
-                            logger.error("Error details:", exc_info=True)
-
-                    # Process the entire email structure
-                    if original_email.is_multipart():
-                        for part in original_email.walk():
-                            if part.get_content_maintype() == 'multipart':
-                                continue
-                            process_part(part)
-                    else:
-                        process_part(original_email)
-
-                    # Combine all text parts
-                    if text_parts:
-                        combined_text = '\n\n'.join(text_parts)
+                    if combined_text:
                         body.attach(MIMEText(combined_text, 'plain', 'utf-8'))
-
-                    # Combine all HTML parts
-                    if html_parts:
-                        combined_html = '<br><br>'.join(html_parts)
+                    if combined_html:
                         body.attach(MIMEText(combined_html, 'html', 'utf-8'))
+                    if fallback_text:
+                        body.attach(MIMEText(fallback_text, 'plain', 'utf-8'))
 
-                    # If no content was found, use original payload
-                    if not text_parts and not html_parts:
-                        try:
-                            payload = original_email.get_payload(decode=True)
-                            if payload:
-                                body.attach(MIMEText(payload.decode(), 'plain', 'utf-8'))
-                        except Exception as e:
-                            logger.error(f"Error handling fallback payload: {str(e)}")
-                            logger.error("Error details:", exc_info=True)
-
-                    # Attach the body to the message
                     msg.attach(body)
 
-                    # Handle References and In-Reply-To headers properly
-                    references = []
-                    if 'References' in original_email:
-                        references.extend(original_email['References'].split())
-                    if 'Message-ID' in original_email:
-                        references.append(original_email['Message-ID'])
+                    # Attach files
+                    for attachment in attachments:
+                        msg.attach(attachment)
 
+                    # Handle References and In-Reply-To headers
                     if references:
                         msg['References'] = ' '.join(references)
 
@@ -214,6 +233,8 @@ class EmailDaemon:
                     except Exception as e:
                         logger.error(f"Error sending email to {subscriber.email}: {str(e)}")
                         logger.error("Error details:", exc_info=True)
+
+                    del msg
 
         except Exception as e:
             logger.error(f"Error forwarding email: {str(e)}")
