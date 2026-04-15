@@ -31,10 +31,19 @@ class EmailDaemon:
         self.last_check = datetime.now() - timedelta(minutes=1)
         logger.info(f"Email daemon initialized with email: {self.email}")
 
-    def _get_xoauth2_string(self):
-        """Return a base64-encoded XOAUTH2 auth string with a fresh access token."""
+    def _refresh_credentials(self):
+        """Refresh the access token if needed."""
         if not self.credentials.valid:
             self.credentials.refresh(Request())
+
+    def _xoauth2_bytes(self):
+        """Return raw XOAUTH2 bytes for imaplib.authenticate() (imaplib base64-encodes itself)."""
+        self._refresh_credentials()
+        return f"user={self.email}\x01auth=Bearer {self.credentials.token}\x01\x01".encode()
+
+    def _xoauth2_b64(self):
+        """Return base64-encoded XOAUTH2 string for SMTP AUTH command."""
+        self._refresh_credentials()
         auth_string = f"user={self.email}\x01auth=Bearer {self.credentials.token}\x01\x01"
         return base64.b64encode(auth_string.encode()).decode()
 
@@ -63,8 +72,7 @@ class EmailDaemon:
             logger.info(f"Checking for new emails since {self.last_check}...")
 
             with imaplib.IMAP4_SSL(self.imap_server) as imap:
-                xoauth2 = self._get_xoauth2_string()
-                imap.authenticate('XOAUTH2', lambda _: xoauth2.encode())
+                imap.authenticate('XOAUTH2', lambda _: self._xoauth2_bytes())
                 imap.select('INBOX')
 
                 # Server-side SINCE filter to only download recent emails
@@ -208,8 +216,7 @@ class EmailDaemon:
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
-                xoauth2 = self._get_xoauth2_string()
-                server.docmd('AUTH', 'XOAUTH2 ' + xoauth2)
+                server.docmd('AUTH', 'XOAUTH2 ' + self._xoauth2_b64())
 
                 for subscriber in subscribers:
                     logger.info(f"Forwarding to: {subscriber.email}")
