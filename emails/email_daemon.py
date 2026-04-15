@@ -1,3 +1,4 @@
+import base64
 import imaplib
 import smtplib
 from email import message_from_bytes
@@ -9,6 +10,8 @@ import time
 import logging
 from datetime import datetime, timedelta
 import email.utils
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from .models import MailingList
 
 logger = logging.getLogger(__name__)
@@ -18,9 +21,22 @@ class EmailDaemon:
         self.imap_server = settings.IMAP_SERVER
         self.smtp_server = settings.SMTP_SERVER
         self.email = settings.EMAIL_ADDRESS
-        self.password = settings.EMAIL_PASSWORD
+        self.credentials = Credentials(
+            token=None,
+            refresh_token=settings.GMAIL_REFRESH_TOKEN,
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=settings.GMAIL_CLIENT_ID,
+            client_secret=settings.GMAIL_CLIENT_SECRET,
+        )
         self.last_check = datetime.now() - timedelta(minutes=1)
         logger.info(f"Email daemon initialized with email: {self.email}")
+
+    def _get_xoauth2_string(self):
+        """Return a base64-encoded XOAUTH2 auth string with a fresh access token."""
+        if not self.credentials.valid:
+            self.credentials.refresh(Request())
+        auth_string = f"user={self.email}\x01auth=Bearer {self.credentials.token}\x01\x01"
+        return base64.b64encode(auth_string.encode()).decode()
 
     def extract_email_addresses(self, email_message):
         """Extract all possible recipient addresses from various headers"""
@@ -47,7 +63,8 @@ class EmailDaemon:
             logger.info(f"Checking for new emails since {self.last_check}...")
 
             with imaplib.IMAP4_SSL(self.imap_server) as imap:
-                imap.login(self.email, self.password)
+                xoauth2 = self._get_xoauth2_string()
+                imap.authenticate('XOAUTH2', lambda _: xoauth2.encode())
                 imap.select('INBOX')
 
                 # Server-side SINCE filter to only download recent emails
@@ -187,9 +204,12 @@ class EmailDaemon:
             if 'Message-ID' in original_email:
                 references.append(original_email['Message-ID'])
 
-            with smtplib.SMTP(self.smtp_server) as server:
+            with smtplib.SMTP(self.smtp_server, settings.SMTP_PORT) as server:
+                server.ehlo()
                 server.starttls()
-                server.login(self.email, self.password)
+                server.ehlo()
+                xoauth2 = self._get_xoauth2_string()
+                server.docmd('AUTH', 'XOAUTH2 ' + xoauth2)
 
                 for subscriber in subscribers:
                     logger.info(f"Forwarding to: {subscriber.email}")

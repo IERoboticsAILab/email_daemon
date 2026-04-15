@@ -136,18 +136,21 @@ IMAP_SERVER = 'imap.gmail.com'
 SMTP_SERVER = 'smtp.gmail.com'
 SMTP_PORT = 587
 EMAIL_ADDRESS = os.getenv('EMAIL_ADDRESS')
-EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
+
+# Gmail OAuth2 credentials (replaces EMAIL_PASSWORD / App Password)
+GMAIL_CLIENT_ID = os.getenv('GMAIL_CLIENT_ID')
+GMAIL_CLIENT_SECRET = os.getenv('GMAIL_CLIENT_SECRET')
+GMAIL_REFRESH_TOKEN = os.getenv('GMAIL_REFRESH_TOKEN')
 
 # Add to your existing settings
 SITE_URL = 'http://10.205.10.2:8025'
 
-# Email Settings for the email confirmations
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'  # Gmail SMTP server
-EMAIL_PORT = 587  # Gmail SMTP port
+# Email Settings for the email confirmations (uses same OAuth2 credentials)
+EMAIL_BACKEND = 'emails.backends.GmailOAuth2Backend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('EMAIL_ADDRESS')  # Your Gmail address
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD')  # Your Gmail app password
+EMAIL_HOST_USER = os.getenv('EMAIL_ADDRESS')
 
 # Make sure these are also set
 DEFAULT_FROM_EMAIL = os.getenv('EMAIL_ADDRESS')
