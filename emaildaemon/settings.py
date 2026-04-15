@@ -146,7 +146,7 @@ GMAIL_CLIENT_SECRET = os.getenv('GMAIL_CLIENT_SECRET')
 GMAIL_REFRESH_TOKEN = os.getenv('GMAIL_REFRESH_TOKEN')
 
 # Add to your existing settings
-SITE_URL = 'http://10.205.10.2:8025'
+SITE_URL = 'https://mailing.cyphy.life'
 
 # Email Settings for the email confirmations (uses same OAuth2 credentials)
 EMAIL_BACKEND = 'emails.backends.GmailOAuth2Backend'
@@ -162,23 +162,17 @@ SERVER_EMAIL = os.getenv('EMAIL_ADDRESS')
 # CSRF Settings
 CSRF_TRUSTED_ORIGINS = [
     'http://10.205.10.2:8081',
-    'https://10.205.10.2:8081',
     'http://colossus:8081',
-    'https://colossus:8081',
-    'http://cyphy.life:8081',
-    'https://cyphy.life:8081',
-    'http://cyphy.life',
-    'https://cyphy.life',
-    'http://cyphy.life/mail-list',
-    'https://cyphy.life/mail-list',
     'http://mailing.cyphy.life',
     'https://mailing.cyphy.life',
 ]
 
-CSRF_COOKIE_SECURE = False
-SESSION_COOKIE_SECURE = False
+# Cloudflare terminates SSL and forwards HTTP to origin with X-Forwarded-Proto: https
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
 
-CSRF_COOKIE_DOMAIN = '10.205.10.2'
+CSRF_COOKIE_DOMAIN = '.cyphy.life'
 CSRF_COOKIE_SAMESITE = 'Lax'
 
 # Logging - route all output to console (captured by Docker)
