@@ -169,8 +169,10 @@ CSRF_TRUSTED_ORIGINS = [
     'https://cyphy.life:8081',
     'http://cyphy.life',
     'https://cyphy.life',
-    'http://cyphy.life/mail-list'
-    'https://cyphy.life/mail-list'
+    'http://cyphy.life/mail-list',
+    'https://cyphy.life/mail-list',
+    'http://mailing.cyphy.life',
+    'https://mailing.cyphy.life',
 ]
 
 CSRF_COOKIE_SECURE = False
