@@ -221,7 +221,7 @@ class EmailDaemon:
                 for subscriber in subscribers:
                     logger.info(f"Forwarding to: {subscriber.email}")
                     msg = MIMEMultipart('mixed')
-                    msg['From'] = self.email
+                    msg['From'] = mailing_list.alias
                     msg['To'] = subscriber.email
                     msg['Subject'] = new_subject
                     msg['Reply-To'] = original_email['From']
@@ -249,10 +249,10 @@ class EmailDaemon:
                     if 'In-Reply-To' in original_email:
                         msg['In-Reply-To'] = original_email['In-Reply-To']
 
-                    # Copy other important headers
-                    for header in ['Date', 'Message-ID', 'Content-Type', 'Content-Transfer-Encoding']:
-                        if header in original_email:
-                            msg[header] = original_email[header]
+                    # Preserve original send date (do not copy Content-Type/Content-Transfer-Encoding
+                    # — those are managed by the MIME classes and must not be overwritten)
+                    if 'Date' in original_email:
+                        msg['Date'] = original_email['Date']
 
                     try:
                         server.send_message(msg)
