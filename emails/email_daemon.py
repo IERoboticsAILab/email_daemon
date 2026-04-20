@@ -159,10 +159,14 @@ class EmailDaemon:
         def process_part(part):
             try:
                 content_type = part.get_content_type()
-                if content_type == 'text/plain':
-                    text_parts.append(part.get_payload(decode=True).decode())
-                elif content_type == 'text/html':
-                    html_parts.append(part.get_payload(decode=True).decode())
+                if content_type in ('text/plain', 'text/html'):
+                    raw = part.get_payload(decode=True)
+                    charset = part.get_content_charset() or 'utf-8'
+                    decoded = raw.decode(charset, errors='replace')
+                    if content_type == 'text/plain':
+                        text_parts.append(decoded)
+                    else:
+                        html_parts.append(decoded)
                 elif part.get_filename():
                     attachments.append(part)
             except Exception as e:
