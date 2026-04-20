@@ -221,10 +221,12 @@ class EmailDaemon:
                 for subscriber in subscribers:
                     logger.info(f"Forwarding to: {subscriber.email}")
                     msg = MIMEMultipart('mixed')
-                    msg['From'] = mailing_list.alias
+                    msg['From'] = self.email
                     msg['To'] = subscriber.email
                     msg['Subject'] = new_subject
-                    msg['Reply-To'] = original_email['From']
+                    # Reply-To points back to the mailing list alias so replies go to the list.
+                    # Gmail enforces From = authenticated account, so we can't send as the alias directly.
+                    msg['Reply-To'] = mailing_list.alias
 
                     # Build the body
                     body = MIMEMultipart('alternative')
