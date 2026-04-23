@@ -1,6 +1,7 @@
 import base64
 import imaplib
 import smtplib
+import socket
 from email import message_from_bytes
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -71,7 +72,7 @@ class EmailDaemon:
             current_time = datetime.now()
             logger.info(f"Checking for new emails since {self.last_check}...")
 
-            with imaplib.IMAP4_SSL(self.imap_server) as imap:
+            with imaplib.IMAP4_SSL(self.imap_server, timeout=30) as imap:
                 imap.authenticate('XOAUTH2', lambda _: self._xoauth2_bytes())
                 imap.select('INBOX')
 
@@ -273,7 +274,11 @@ class EmailDaemon:
 
     def run(self):
         logger.info("Starting email daemon...")
+        socket.setdefaulttimeout(30)
         while True:
-            self.check_emails()
+            try:
+                self.check_emails()
+            except Exception as e:
+                logger.error(f"Unhandled error in check loop: {e}", exc_info=True)
             logger.info("Waiting 60 seconds before next check...")
-            time.sleep(60)  # Check every minute
+            time.sleep(60)
