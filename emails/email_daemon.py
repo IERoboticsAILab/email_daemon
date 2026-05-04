@@ -29,7 +29,7 @@ class EmailDaemon:
             client_id=settings.GMAIL_CLIENT_ID,
             client_secret=settings.GMAIL_CLIENT_SECRET,
         )
-        self.last_check = datetime.now() - timedelta(minutes=1)
+        self.last_check = datetime.now() - timedelta(minutes=10)
         logger.info(f"Email daemon initialized with email: {self.email}")
 
     def _refresh_credentials(self):
