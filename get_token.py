@@ -45,8 +45,12 @@ def main():
         print("Download it from Google Cloud Console and place it next to this script.")
         sys.exit(1)
 
-    print("Opening browser for Google authentication...")
-    creds = flow.run_local_server(port=0)
+    # Use localhost redirect — VS Code will auto-forward port 8080 to your browser.
+    # Make sure http://localhost:8080 is added as an authorized redirect URI in
+    # Google Cloud Console → APIs & Services → Clients → your OAuth client.
+    creds = flow.run_local_server(port=8080, open_browser=False,
+                                  authorization_prompt_message=
+                                  "\nOpen this URL in your browser and log in as ieuroboticslab@gmail.com:\n{url}\n\nWaiting for authorization...\n")
 
     print("\n" + "=" * 50)
     print("Add these three variables to your .env file:")
